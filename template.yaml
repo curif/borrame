@@ -1,0 +1,100 @@
+apiVersion: scaffolder.backstage.io/v1beta3
+kind: Template
+metadata:
+  name: gitlab-user-create-template-hack
+  title: Gitlab User Creation
+  description: Template to create a new user in GitLab
+  tags:
+    - gitlab
+    - user-creation
+spec:
+  owner: group:default/digital-teams-services-cloudops
+  type: service
+  channel: &channel C08667DD33K
+  # Root group must include / at the end
+  rootGroup: &filter 
+    - digital/teams/
+    - gdm/teams/
+    - corporate/teams/
+    - integration/teams/
+    - idd/teams/
+
+  parameters:
+    - title: User Information
+      required:
+          - name
+          - email
+          - role
+          - selectedGroup
+      properties:
+        name:
+          type: string
+          title: The complete user name
+          description: The name of the user.
+          ui:help: 'Please enter the real name of the user'
+          ui:placeholder: 'Jhon Doe'
+        email:
+          type: string
+          title: GitLab Email
+          description: The email for the new GitLab user.
+          pattern: '^[a-zA-Z0-9._-]+@[a-zA-Z0-9-]+\.[a-zA-Z]{2,4}$'
+          ui:help: 'Please enter a valid email'
+          ui:placeholder: 'example.mail@host.com'
+        selectedGroup:
+          type: integer
+          title: GitLab Group
+          description: Pick a GitLab group where you can manage users.
+          ui:field: GitLabGroupDropdown
+          ui:options:
+            filter: *filter
+        role:
+          type: number
+          title: Role
+          description: Select the role for the user.
+          enum:
+            - 30
+            - 40
+            - 50
+          ui:options:
+            enumNames:
+              - "Developer"
+              - "Maintainer"
+              - "Owner"
+
+  steps:
+    - id: create-user
+      name: Create GitLab User
+      action: gitlab:create-user
+      input:
+        name: ${{ parameters.name }}
+        username: ${{ parameters.username }}
+        email: ${{ parameters.email }}
+        backstageUser: ${{ user.ref }}
+        role: 30
+
+    - id: slack-message
+      name: Send Notification to Slack
+      action: slack:message:send
+      input:
+        message: ${{ steps['create-user'].output.creationStatus }}
+        channel: *channel
+
+    - id: add-user-to-group
+      name: Add User to Group
+      action: gitlab:manage-group
+      input:
+        username: ${{ steps['create-user'].output.username }}
+        group: ${{ parameters.selectedGroup }}
+        action: add
+        backstageUser: ${{ user.ref }}
+        role: ${{ parameters.role }}
+
+
+  output:
+    text:
+    - title: Creation Results
+      content: |
+        ${{ steps['create-user'].output.creationStatus }}
+    - title: Group add Results
+      content: |
+        ${{ steps['add-user-to-group'].output.actionStatus }}
